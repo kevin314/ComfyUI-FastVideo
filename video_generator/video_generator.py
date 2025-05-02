@@ -3,7 +3,8 @@ import os
 import glob
 
 from fastvideo import VideoGenerator as FastVideoGenerator
-from fastvideo.v1.configs.models import DiTConfig, EncoderConfig, VAEConfig
+from fastvideo.v1.configs.models import DiTConfig, VAEConfig
+from fastvideo.v1.configs.models.encoders import TextEncoderConfig
 
 
 MAX_RESOLUTION = 16384
@@ -92,7 +93,7 @@ class VideoGenerator:
 
         dit_config_obj = DiTConfig()
         vae_config_obj = VAEConfig()
-        text_encoder_config_obj = EncoderConfig()
+        text_encoder_config_obj = TextEncoderConfig()
 
         dit_config_obj.update_model_config(dit_config)
         vae_config_obj.update_model_config(vae_config)
