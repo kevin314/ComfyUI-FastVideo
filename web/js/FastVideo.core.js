@@ -421,14 +421,13 @@ app.registerExtension({
     name: "FastVideo.AutoWidgets",
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if ( nodeData?.name === "InferenceArgs" || nodeData?.name === "VAEConfig" || 
+        if (nodeData?.name == "VideoGenerator" || nodeData?.name === "InferenceArgs" || nodeData?.name === "VAEConfig" ||
             nodeData?.name === "TextEncoderConfig" || nodeData?.name === "DITConfig") {
             // Add serialization support
             chainCallback(nodeType.prototype, "onSerialize", function (info) {
                 if (!this.widgets) {
                     return;
                 }
-
                 // Ensure widgets_values exists
                 if (!info.widgets_values) {
                     info.widgets_values = {};
@@ -508,9 +507,14 @@ app.registerExtension({
             chainCallback(nodeType.prototype, "onNodeCreated", function () {
                 // Convert any existing widgets to AUTO widgets if needed
                 let new_widgets = [];
-                const intWidgetNames = ["height", "width", "num_frames", "num_inference_steps", "flow_shift", "seed", "fps", "scale_factor",]
-                const floatWidgetNames = ["guidance_scale"]
-                const comboWidgetNames = ["precision", "tiling", "vae_sp"]
+                const intWidgetNames = ["height", "width", "num_frames", "num_inference_steps", "flow_shift", "seed", "fps", "scale_factor",
+                    "tile_sample_min_height", "tile_sample_min_width", "tile_sample_min_num_frames", "tile_sample_stride_height", "tile_sample_stride_width",
+                    "tile_sample_stride_num_frames", "blend_num_frames"
+                ]
+                const floatWidgetNames = ["embedded_cfg_scale", "guidance_scale"]
+                const comboWidgetNames = ["vae_tiling", "vae_precision", "vae_sp", "text_encoder_precision", "precision",
+                    "load_encoder", "load_decoder", "use_tiling", "use_temporal_tiling", "use_parallel_tiling"
+                ]
 
                 if (this.widgets) {
                     for (let w of this.widgets) {

@@ -3,6 +3,7 @@ import os
 import glob
 
 from fastvideo import VideoGenerator as FastVideoGenerator
+from fastvideo.v1.configs.models import DiTConfig, EncoderConfig, VAEConfig
 
 
 MAX_RESOLUTION = 16384
@@ -20,18 +21,28 @@ class VideoGenerator:
                             "lush green foliage and dappled sunlight. Mid-shot, warm and whimsical tones."}),
                 "output_path": ("STRING", {"default": "/workspace/ComfyUI/outputs_video/"}),
                 "num_gpus": ("INT", {"default": 2, "min": 1, "max": 16}),
-                "master_port": ("INT", {"default": 29503}),
-                "model_path": ("STRING", {"default": "FastHunyuan-diffusers"}),
+                "model_path": ("STRING", {"default": "FastVideo/FastHunyuan-diffusers"}),
                 "embedded_cfg_scale": ("FLOAT", {"default": 6.0}),
                 "sp_size": ("INT", {"default": 2}),
                 "tp_size": ("INT", {"default": 2}),
             },
             "optional": {
                 "vae_config": ("VAE_CONFIG",),
+                "vae_precision": (["fp16", "bf16"], {"default": "fp16"}),
+                "vae_tiling": ([True, False], {"default": True}),
+                "vae_sp": ([True, False], {"default": False}),
+
                 "text_encoder_config": ("TEXT_ENCODER_CONFIG",),
+                "text_encoder_precision": (["fp16", "bf16"], {"default": "fp16"}),
+
                 "dit_config": ("DIT_CONFIG",),
+                "precision": (["fp16", "bf16"], {"default": "fp16"}),
             }
         }
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("video_path",)
@@ -59,28 +70,49 @@ class VideoGenerator:
         prompt,
         output_path,
         num_gpus,
-        master_port,
         model_path,
         embedded_cfg_scale,
         sp_size,
         tp_size,
+        vae_precision,
+        vae_tiling,
+        vae_sp,
+        text_encoder_precision,
+        precision,
         inference_args=None,
         vae_config=None,
         text_encoder_config=None,
         dit_config=None,
     ):        
-        current_env = os.environ.copy()
+        # current_env = os.environ.copy()
 
-        current_env["PYTHONIOENCODING"] = "utf-8"
-        current_env["FASTVIDEO_ATTENTION_BACKEND"] = ""
-        current_env["MODEL_BASE"] = model_path
+        # current_env["PYTHONIOENCODING"] = "utf-8"
+        # current_env["FASTVIDEO_ATTENTION_BACKEND"] = ""
+        # current_env["MODEL_BASE"] = model_path
+
+        dit_config_obj = DiTConfig()
+        vae_config_obj = VAEConfig()
+        text_encoder_config_obj = EncoderConfig()
+
+        dit_config_obj.update_model_config(dit_config)
+        vae_config_obj.update_model_config(vae_config)
+        text_encoder_config_obj.update_model_config(text_encoder_config)
 
         if self.generator is None:
             self.generator = FastVideoGenerator.from_pretrained(
-                model_path="FastVideo/FastHunyuan-diffusers",
+                model_path=model_path,
                 num_gpus=num_gpus,
                 tp_size=tp_size,
                 sp_size=sp_size,
+                embedded_cfg_scale=embedded_cfg_scale,
+                vae_precision=vae_precision,
+                vae_tiling=vae_tiling,
+                vae_sp=vae_sp,
+                text_encoder_precision=text_encoder_precision,
+                precision=precision,
+                dit_config=dit_config_obj,
+                vae_config=vae_config_obj,
+                text_encoder_config=text_encoder_config_obj
             )
 
         self.generator.generate_video(

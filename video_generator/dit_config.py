@@ -3,16 +3,14 @@ class DITConfig:
     def INPUT_TYPES(cls):
         return {
             "optional": {
-                "precision": (["fp16", "bf16"], {"default": "fp16"}),
+                "prefix": ("STRING", {"default": ""}),
+                "quant_config": ("STRING", {"default": ""}),
             }
         }
     
     @classmethod
-    def VALIDATE_INPUTS(cls, precision, **kwargs):
-        # Handle None value for scale_factor
-        if precision == -99999 or precision == None:
-            # This is valid - we'll use the default value in the set_args method
-            return True
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
 
     RETURN_TYPES = ("DIT_CONFIG",)
     RETURN_NAMES = ("dit_config",)
@@ -21,13 +19,15 @@ class DITConfig:
 
     def set_args(
         self,
-        precision
+        prefix,
+        quant_config
     ):
-        def auto_to_none(value):
-            return None if value == -99999 else value
-
-        args = {
-            "precision": auto_to_none(precision),
+        raw_args = {
+            "prefix": prefix,
+            "quant_config": quant_config
         }
+
+        # Filter out keys where value is -99999
+        args = {k: v for k, v in raw_args.items() if v != -99999}
 
         return(args,)
