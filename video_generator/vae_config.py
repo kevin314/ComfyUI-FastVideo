@@ -72,6 +72,6 @@ class VAEConfig:
         }
 
         # Filter out any value explicitly set to -99999
-        args = {k: v for k, v in raw_args.items() if v != -99999}
+        args = {k: v for k, v in raw_args.items() if str(v) != str(-99999)}
 
         return (args,)
