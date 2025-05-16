@@ -1,13 +1,33 @@
 from __future__ import annotations
 import os
 import glob
+import threading
+import time
+import signal
+import sys
+import queue
 
 from fastvideo import VideoGenerator as FastVideoGenerator, PipelineConfig
 from fastvideo.v1.configs.models import DiTConfig, VAEConfig
 from fastvideo.v1.configs.models.encoders import TextEncoderConfig
 
+# Import the interrupt checking function from ComfyUI
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+from comfy.model_management import processing_interrupted
 
 MAX_RESOLUTION = 16384
+
+# Custom exception for interruption
+class GenerationInterruptedException(Exception):
+    pass
+
+# Custom exception for interruption that ComfyUI will recognize
+class GenerationCancelledException(Exception):
+    def __init__(self, message="Generation was cancelled by user"):
+        self.message = message
+        super().__init__(self.message)
 
 def update_config_from_args(config, args_dict):
     """
@@ -67,6 +87,57 @@ class VideoGenerator:
     CATEGORY = "fastvideo"
 
     generator = None
+    _interrupt_thread = None
+    _generation_active = False
+    _generation_interrupted = False
+    _interrupt_event = threading.Event()
+    _generation_thread = None
+    _generation_result = None
+    _generation_exception = None
+
+    def _monitor_for_interruption(self):
+        """Background thread that monitors for interruption requests"""
+        while self._generation_active and not self._interrupt_event.is_set():
+            if processing_interrupted():
+                print("Video generation interrupted by user")
+                
+                # Mark as interrupted
+                self._generation_interrupted = True
+                
+                # Try to send interrupt signal to worker processes
+                if hasattr(self.generator, 'executor'):
+                    print("Generator has executor attribute")
+                    try:
+                        # The MultiprocExecutor has a workers attribute
+                        if hasattr(self.generator.executor, 'workers'):
+                            for worker in self.generator.executor.workers:
+                                if worker.is_alive():
+                                    os.kill(worker.pid, signal.SIGINT)
+                            print("Interrupt signal sent to worker processes")
+                    except Exception as e:
+                        print(f"Error sending interrupt signal: {e}")
+                
+                # Set the interrupt event to notify other threads
+                self._interrupt_event.set()
+                break
+            time.sleep(0.5)  # Check every half second
+
+    def _run_generation(self, prompt, output_path, inference_args):
+        """Thread function to run the generation"""
+        try:
+            # Generate the video
+            self.generator.generate_video(
+                prompt=prompt,
+                output_path=output_path,
+                **inference_args
+            )
+            # Store the result
+            self._generation_result = os.path.join(output_path, f"{prompt[:100]}.mp4")
+        except Exception as e:
+            # Store any exception
+            self._generation_exception = e
+            # Set the interrupt event to notify other threads
+            self._interrupt_event.set()
 
     def load_output_video(self, output_dir):
         video_extensions = ["*.mp4", "*.avi", "*.mov", "*.mkv"]
@@ -100,9 +171,18 @@ class VideoGenerator:
         vae_config=None,
         text_encoder_config=None,
         dit_config=None,
-    ):        
+    ):  
+        print('launching inference')
+        
+        # Reset interruption flag and event
+        self._generation_interrupted = False
+        self._interrupt_event.clear()
+        self._generation_result = None
+        self._generation_exception = None
+        
         # Load pipeline config from model path
         pipeline_config = PipelineConfig.from_pretrained(model_path)
+        print('pipeline_config', pipeline_config)
         
         # Update configs with provided config dictionaries
         if dit_config is not None:
@@ -142,7 +222,6 @@ class VideoGenerator:
         if sp_size is not None:
             generation_args['sp_size'] = sp_size
             
-
         # Initialize generator if not already done
         if self.generator is None:
             print('generation_args', generation_args)
@@ -154,12 +233,47 @@ class VideoGenerator:
             )
 
         print('inference_args', inference_args)
-        # Generate the video
-        self.generator.generate_video(
-            prompt=prompt,
-            output_path=output_path,
-            **inference_args
+        
+        # Start a background thread to monitor for interruptions
+        self._generation_active = True
+        self._interrupt_thread = threading.Thread(
+            target=self._monitor_for_interruption,
+            daemon=True
         )
-
-        output_path = os.path.join(output_path, f"{prompt[:100]}.mp4")
-        return(output_path,)
+        self._interrupt_thread.start()
+        
+        # Start a thread to run the generation
+        self._generation_thread = threading.Thread(
+            target=self._run_generation,
+            args=(prompt, output_path, inference_args),
+            daemon=True
+        )
+        self._generation_thread.start()
+        
+        # Wait for either completion or interruption
+        while self._generation_thread.is_alive() and not self._interrupt_event.is_set():
+            # Check every 0.5 seconds
+            self._generation_thread.join(timeout=0.5)
+        
+        # Clean up
+        self._generation_active = False
+        if self._interrupt_thread:
+            self._interrupt_thread.join(timeout=1.0)
+            self._interrupt_thread = None
+        
+        # Check what happened
+        if self._generation_interrupted:
+            print("Video generation was cancelled by user")
+            # Raise an exception instead of returning a value
+            # This will signal ComfyUI that the node execution failed and should be retried
+            raise GenerationCancelledException()
+        elif self._generation_exception:
+            # Re-raise the exception from the generation thread
+            raise self._generation_exception
+        elif self._generation_result:
+            # Return the successful result
+            return (self._generation_result,)
+        else:
+            # This shouldn't happen, but just in case
+            print("Generation completed but no result was produced")
+            raise Exception("Generation failed to produce a result")
