@@ -210,7 +210,7 @@ class VideoGenerator:
             raw_pipeline_args['text_encoder_precision'] = text_encoder_precision
 
         # Filter out any value explicitly set to -99999 (auto values)
-        pipeline_args = {k: v for k, v in raw_pipeline_args.items() if v != -99999}
+        pipeline_args = {k: v for k, v in raw_pipeline_args.items() if str(int(v)) != str(-99999)}
 
         update_config_from_args(pipeline_config, pipeline_args)
 
