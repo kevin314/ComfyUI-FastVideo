@@ -17,7 +17,6 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 from comfy.model_management import processing_interrupted
 
-MAX_RESOLUTION = 16384
 
 # Custom exception for interruption
 class GenerationInterruptedException(Exception):
@@ -97,16 +96,15 @@ class VideoGenerator:
 
     def _monitor_for_interruption(self):
         """Background thread that monitors for interruption requests"""
+        time.sleep(2)  # Give the generation thread time to send execute_forward
+
         while self._generation_active and not self._interrupt_event.is_set():
             if processing_interrupted():
                 print("Video generation interrupted by user")
-                
-                # Mark as interrupted
                 self._generation_interrupted = True
-                
+
                 # Try to send interrupt signal to worker processes
                 if hasattr(self.generator, 'executor'):
-                    print("Generator has executor attribute")
                     try:
                         # The MultiprocExecutor has a workers attribute
                         if hasattr(self.generator.executor, 'workers'):
@@ -120,23 +118,19 @@ class VideoGenerator:
                 # Set the interrupt event to notify other threads
                 self._interrupt_event.set()
                 break
-            time.sleep(0.5)  # Check every half second
+            time.sleep(0.5)
 
     def _run_generation(self, prompt, output_path, inference_args):
         """Thread function to run the generation"""
         try:
-            # Generate the video
             self.generator.generate_video(
                 prompt=prompt,
                 output_path=output_path,
                 **inference_args
             )
-            # Store the result
             self._generation_result = os.path.join(output_path, f"{prompt[:100]}.mp4")
         except Exception as e:
-            # Store any exception
             self._generation_exception = e
-            # Set the interrupt event to notify other threads
             self._interrupt_event.set()
 
     def load_output_video(self, output_dir):
@@ -172,7 +166,7 @@ class VideoGenerator:
         text_encoder_config=None,
         dit_config=None,
     ):  
-        print('launching inference')
+        print('Running FastVideo inference')
         
         # Reset interruption flag and event
         self._generation_interrupted = False
@@ -221,8 +215,7 @@ class VideoGenerator:
             generation_args['tp_size'] = tp_size
         if sp_size is not None:
             generation_args['sp_size'] = sp_size
-            
-        # Initialize generator if not already done
+
         if self.generator is None:
             print('generation_args', generation_args)
             print('pipeline_config', pipeline_config)
@@ -234,6 +227,14 @@ class VideoGenerator:
 
         print('inference_args', inference_args)
         
+        # Start a thread to run the generation
+        self._generation_thread = threading.Thread(
+            target=self._run_generation,
+            args=(prompt, output_path, inference_args),
+            daemon=True
+        )
+        self._generation_thread.start()
+
         # Start a background thread to monitor for interruptions
         self._generation_active = True
         self._interrupt_thread = threading.Thread(
@@ -242,36 +243,22 @@ class VideoGenerator:
         )
         self._interrupt_thread.start()
         
-        # Start a thread to run the generation
-        self._generation_thread = threading.Thread(
-            target=self._run_generation,
-            args=(prompt, output_path, inference_args),
-            daemon=True
-        )
-        self._generation_thread.start()
-        
         # Wait for either completion or interruption
         while self._generation_thread.is_alive() and not self._interrupt_event.is_set():
-            # Check every 0.5 seconds
             self._generation_thread.join(timeout=0.5)
         
-        # Clean up
         self._generation_active = False
         if self._interrupt_thread:
             self._interrupt_thread.join(timeout=1.0)
             self._interrupt_thread = None
         
-        # Check what happened
         if self._generation_interrupted:
             print("Video generation was cancelled by user")
-            # Raise an exception instead of returning a value
-            # This will signal ComfyUI that the node execution failed and should be retried
             raise GenerationCancelledException()
         elif self._generation_exception:
             # Re-raise the exception from the generation thread
             raise self._generation_exception
         elif self._generation_result:
-            # Return the successful result
             return (self._generation_result,)
         else:
             # This shouldn't happen, but just in case
