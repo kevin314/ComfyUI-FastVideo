@@ -528,7 +528,7 @@ app.registerExtension({
                 const comboWidgetNames = ["vae_tiling", "vae_precision", "vae_sp", "text_encoder_precision", "precision",
                     "load_encoder", "load_decoder", "use_tiling", "use_temporal_tiling", "use_parallel_tiling"
                 ]
-                const stringWidgetNames = ["prefix", "quant_config", "lora_config"]
+                const stringWidgetNames = ["prefix", "quant_config", "lora_config", "image_path"]
 
                 if (this.widgets) {
                     for (let w of this.widgets) {

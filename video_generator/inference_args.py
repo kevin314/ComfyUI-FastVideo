@@ -11,6 +11,7 @@ class InferenceArgs:
                 "flow_shift": ("INT", {"default": 17}),
                 "seed": ("INT", {"default": 1024}),
                 "fps": ("INT", {"default": 24}),
+                "image_path": ("STRING", {"default": "X://insert/path/here.mp4"}),
             }
         }
 
@@ -29,6 +30,7 @@ class InferenceArgs:
         flow_shift,
         seed,
         fps,
+        image_path,
     ):
         # def auto_to_none(value):
         #     return None if value == -99999 else value
@@ -53,10 +55,22 @@ class InferenceArgs:
             "flow_shift": flow_shift,
             "seed": seed,
             "fps": fps,
+            "image_path": image_path,
         }
 
-        # Filter out keys where value is -99999
-        args = {k: v for k, v in raw_args.items() if str(int(v)) != str(-99999)}
+        # Filter out keys where value is -99999, handling different types properly
+        args = {}
+        for k, v in raw_args.items():
+            try:
+                if isinstance(v, str):
+                    if v != "-99999":
+                        args[k] = v
+                elif v != -99999:
+                    # If it's not a string, compare directly
+                    args[k] = v
+            except (ValueError, TypeError):
+                # Include any value that causes an error in comparison
+                args[k] = v
 
         return(args,)
 
