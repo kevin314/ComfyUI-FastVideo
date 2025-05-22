@@ -526,7 +526,7 @@ app.registerExtension({
                 ]
                 const floatWidgetNames = ["embedded_cfg_scale", "guidance_scale"]
                 const comboWidgetNames = ["vae_tiling", "vae_precision", "vae_sp", "text_encoder_precision", "precision",
-                    "load_encoder", "load_decoder", "use_tiling", "use_temporal_tiling", "use_parallel_tiling"
+                    "load_encoder", "load_decoder", "use_tiling", "use_temporal_tiling", "use_parallel_tiling", "use_cpu_offload", "enable_teacache"
                 ]
                 const stringWidgetNames = ["prefix", "quant_config", "lora_config", "image_path"]
 

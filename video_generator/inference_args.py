@@ -12,8 +12,13 @@ class InferenceArgs:
                 "seed": ("INT", {"default": 1024}),
                 "fps": ("INT", {"default": 24}),
                 "image_path": ("STRING", {"default": "X://insert/path/here.mp4"}),
+                "enable_teacache": ([True, False], {"default": False}),
             }
         }
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
 
     RETURN_TYPES = ("INFERENCE_ARGS",)
     RETURN_NAMES = ("inference_args",)
@@ -31,6 +36,7 @@ class InferenceArgs:
         seed,
         fps,
         image_path,
+        enable_teacache,
     ):
         # def auto_to_none(value):
         #     return None if value == -99999 else value
@@ -56,6 +62,7 @@ class InferenceArgs:
             "seed": seed,
             "fps": fps,
             "image_path": image_path,
+            "enable_teacache": enable_teacache,
         }
 
         # Filter out keys where value is -99999, handling different types properly

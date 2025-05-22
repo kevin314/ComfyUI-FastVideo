@@ -8,8 +8,6 @@ import sys
 import queue
 
 from fastvideo import VideoGenerator as FastVideoGenerator, PipelineConfig
-from fastvideo.v1.configs.models import DiTConfig, VAEConfig
-from fastvideo.v1.configs.models.encoders import TextEncoderConfig
 
 # Import the interrupt checking function from ComfyUI
 import sys
@@ -73,6 +71,7 @@ class VideoGenerator:
 
                 "dit_config": ("DIT_CONFIG",),
                 "precision": (["fp16", "bf16"], {"default": "fp16"}),
+                "use_cpu_offload":([True, False], {"default": False}),
             }
         }
 
@@ -165,6 +164,7 @@ class VideoGenerator:
         vae_config=None,
         text_encoder_config=None,
         dit_config=None,
+        use_cpu_offload=None,
     ):  
         print('Running FastVideo inference')
         
@@ -208,13 +208,17 @@ class VideoGenerator:
 
         update_config_from_args(pipeline_config, pipeline_args)
 
-        generation_args = {}
+        raw_generation_args = {}
         if num_gpus is not None:
-            generation_args['num_gpus'] = num_gpus
+            raw_generation_args['num_gpus'] = num_gpus
         if tp_size is not None:
-            generation_args['tp_size'] = tp_size
+            raw_generation_args['tp_size'] = tp_size
         if sp_size is not None:
-            generation_args['sp_size'] = sp_size
+            raw_generation_args['sp_size'] = sp_size
+        if use_cpu_offload is not None:
+            raw_generation_args['use_cpu_offload'] = use_cpu_offload
+
+        generation_args = {k: v for k, v in raw_generation_args.items() if str(int(v)) != str(-99999)}
 
         if self.generator is None:
             print('generation_args', generation_args)
