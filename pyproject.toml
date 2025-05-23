@@ -1,0 +1,15 @@
+[project]
+name = "fastvideo"
+description = "A custom node suite for ComfyUI that provides accelerated video generation using [a/FastVideo](https://github.com/hao-ai-labs/FastVideo). See the [a/blog post](https://hao-ai-lab.github.io/blogs/fastvideo/) about FastVideo V1 to learn more."
+version = "1.0.0"
+license = {file = "LICENSE"}
+dependencies = ["# Core dependencies", "fastvideo"]
+
+[project.urls]
+Repository = "https://github.com/kevin314/ComfyUI-FastVideo"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "ComfyUI-FastVideo"
+Icon = ""
