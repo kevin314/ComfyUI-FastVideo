@@ -30,14 +30,14 @@ Coming soon!
 
 ### Manual Installation
 
-1. Clone this repository into your ComfyUI custom_nodes directory:
+#### Clone this repository into your ComfyUI custom_nodes directory:
 
 ```bash
 cd /path/to/ComfyUI/custom_nodes
 git clone https://github.com/kevin314/ComfyUI-FastVideo
 ```
 
-2. Install dependencies:
+#### Install dependencies:
 
 Currently, the only dependency is `fastvideo`, which can be installed using pip.
 
@@ -45,16 +45,16 @@ Currently, the only dependency is `fastvideo`, which can be installed using pip.
 pip install fastvideo
 ```
 
-3. Install missing custom nodes:
+#### Install missing custom nodes:
 
-ComfyUI-VideoHelperSuite
+`ComfyUI-VideoHelperSuite`:
 
 ```bash
 cd /path/to/ComfyUI/custom_nodes
 git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git
 ```
 
-If you're seeing ImportError: libGL.so.1: cannot open shared object file: No such file or directory,
+If you're seeing `ImportError: libGL.so.1: cannot open shared object file: No such file or directory`,
 you may need to install ffmpeg
 
 ```bash
