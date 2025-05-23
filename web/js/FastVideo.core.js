@@ -105,8 +105,8 @@ function drawAutoAnnotated(ctx, node, widget_width, y, H) {
         ctx.fillStyle = isAuto ? litegraph_base.WIDGET_SECONDARY_TEXT_COLOR : litegraph_base.WIDGET_TEXT_COLOR;
         ctx.fillText(text, widget_width - autoTextRightMargin - autoTextWidth - 15, y + H * 0.7);
 
-        // Draw increment/decrement buttons if not in AUTO mode
-        if (!isAuto && !this.disabled) {
+        // Draw increment/decrement buttons if not in AUTO mode and not a string widget
+        if (!isAuto && !this.disabled && this.config[0] !== "FVAUTOSTRING") {
             // Draw decrement button (left triangle)
             ctx.fillStyle = litegraph_base.WIDGET_TEXT_COLOR;
             ctx.beginPath();
@@ -136,7 +136,9 @@ function mouseAutoAnnotated(event, [x, y], node) {
     const cogRadius = 6;
 
     // Determine if clicking on increment/decrement buttons
-    const delta = x < 40 ? -1 : x > widget_width - 48 ? 1 : 0;
+    // For string widgets, don't handle increment/decrement
+    const delta = this.config[0] === "FVAUTOSTRING" ? 0 :
+        (x < 40 ? -1 : x > widget_width - 48 ? 1 : 0);
     const old_value = this.value;
 
     // Handle different event types
@@ -147,8 +149,8 @@ function mouseAutoAnnotated(event, [x, y], node) {
 
         if (this.isAuto) return false;
 
-        // For combo boxes, don't handle dragging
-        if (this.config[0] === "FVAUTOCOMBO") return false;
+        // For combo boxes or string widgets, don't handle dragging
+        if (this.config[0] === "FVAUTOCOMBO" || this.config[0] === "FVAUTOSTRING") return false;
 
         let v = parseFloat(this.value);
         v += delta_move;
@@ -307,22 +309,27 @@ function mouseAutoAnnotated(event, [x, y], node) {
             } else {
                 // Original prompt for other types
                 const d_callback = (v) => {
-                    this.value = this.parseValue?.(v) ?? Number(v);
+                    if (this.config[0] === "FVAUTOSTRING") {
+                        // For string widgets, just use the value as is
+                        this.value = v;
+                    } else {
+                        this.value = this.parseValue?.(v) ?? Number(v);
 
-                    // Apply min/max constraints
-                    if (this.options.min != null) {
-                        this.value = Math.max(this.options.min, this.value);
-                    }
-                    if (this.options.max != null) {
-                        this.value = Math.min(this.options.max, this.value);
-                    }
+                        // Apply min/max constraints
+                        if (this.options.min != null) {
+                            this.value = Math.max(this.options.min, this.value);
+                        }
+                        if (this.options.max != null) {
+                            this.value = Math.min(this.options.max, this.value);
+                        }
 
-                    // Round to precision or to integer
-                    if (this.config[0] === "FVAUTOINT") {
-                        this.value = Math.round(this.value);
-                    } else if (this.options.precision !== undefined) {
-                        const precision = Math.pow(10, this.options.precision);
-                        this.value = Math.round(this.value * precision) / precision;
+                        // Round to precision or to integer
+                        if (this.config[0] === "FVAUTOINT") {
+                            this.value = Math.round(this.value);
+                        } else if (this.options.precision !== undefined) {
+                            const precision = Math.pow(10, this.options.precision);
+                            this.value = Math.round(this.value * precision) / precision;
+                        }
                     }
 
                     if (this.callback) {
@@ -375,6 +382,9 @@ function makeAutoAnnotated(widget, inputData) {
             if (this.config[0] === "FVAUTOCOMBO") {
                 return this.value;
             }
+            if (this.config[0] === "FVAUTOSTRING") {
+                return this.value;
+            }
             // For FLOAT values, check if it's actually an integer
             if (Number.isInteger(this.value)) {
                 return this.value.toString();
@@ -382,6 +392,9 @@ function makeAutoAnnotated(widget, inputData) {
             return this.value.toFixed(this.options.precision || 2);
         },
         parseValue: function (v) {
+            if (this.config[0] === "FVAUTOSTRING") {
+                return v;
+            }
             if (typeof v === "string") {
                 return parseFloat(v);
             }
@@ -421,14 +434,13 @@ app.registerExtension({
     name: "FastVideo.AutoWidgets",
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if ( nodeData?.name === "InferenceArgs" || nodeData?.name === "VAEConfig" || 
+        if (nodeData?.name == "VideoGenerator" || nodeData?.name === "InferenceArgs" || nodeData?.name === "VAEConfig" ||
             nodeData?.name === "TextEncoderConfig" || nodeData?.name === "DITConfig") {
             // Add serialization support
             chainCallback(nodeType.prototype, "onSerialize", function (info) {
                 if (!this.widgets) {
                     return;
                 }
-
                 // Ensure widgets_values exists
                 if (!info.widgets_values) {
                     info.widgets_values = {};
@@ -508,9 +520,15 @@ app.registerExtension({
             chainCallback(nodeType.prototype, "onNodeCreated", function () {
                 // Convert any existing widgets to AUTO widgets if needed
                 let new_widgets = [];
-                const intWidgetNames = ["height", "width", "num_frames", "num_inference_steps", "flow_shift", "seed", "fps", "scale_factor",]
-                const floatWidgetNames = ["guidance_scale"]
-                const comboWidgetNames = ["precision", "tiling", "vae_sp"]
+                const intWidgetNames = ["sp_size", "tp_size", "height", "width", "num_frames", "num_inference_steps", "flow_shift", "seed", "fps", "scale_factor",
+                    "tile_sample_min_height", "tile_sample_min_width", "tile_sample_min_num_frames", "tile_sample_stride_height", "tile_sample_stride_width",
+                    "tile_sample_stride_num_frames", "blend_num_frames"
+                ]
+                const floatWidgetNames = ["embedded_cfg_scale", "guidance_scale"]
+                const comboWidgetNames = ["vae_tiling", "vae_precision", "vae_sp", "text_encoder_precision", "precision",
+                    "load_encoder", "load_decoder", "use_tiling", "use_temporal_tiling", "use_parallel_tiling", "use_cpu_offload", "enable_teacache"
+                ]
+                const stringWidgetNames = ["prefix", "quant_config", "lora_config", "image_path"]
 
                 if (this.widgets) {
                     for (let w of this.widgets) {
@@ -520,6 +538,8 @@ app.registerExtension({
                             new_widgets.push(makeAutoAnnotated(w, ["FVAUTOFLOAT", { "default": 0 }]));
                         } else if (comboWidgetNames.includes(w.name)) {
                             new_widgets.push(makeAutoAnnotated(w, ["FVAUTOCOMBO", { "default": 0 }]));
+                        } else if (stringWidgetNames.includes(w.name)) {
+                            new_widgets.push(makeAutoAnnotated(w, ["FVAUTOSTRING", { "default": "" }]));
                         } else {
                             new_widgets.push(w);
                         }
