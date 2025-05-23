@@ -1,13 +1,14 @@
 # ComfyUI-FastVideo
 
-A custom node suite for ComfyUI that provides fast video generation capabilities using [FastVideo](https://github.com/hao-ai-labs/FastVideo).
+A custom node suite for ComfyUI that provides accelerated video generation using [FastVideo](https://github.com/hao-ai-labs/FastVideo). See the [blog post](https://hao-ai-lab.github.io/blogs/fastvideo/) about FastVideo V1 to learn more.
 
 ## Multi-GPU Parallel Inference
 
-One of the key feature ComfyUI-FastVideo brings to ComfyUI is its ability to distribute the generation workload across multiple GPUs, resulting in significantly faster inference times.
+One of the key features ComfyUI-FastVideo brings to ComfyUI is its ability to distribute the generation workload across multiple GPUs, resulting in significantly faster inference times.
 
 ![Wan2.1-I2V-14B-480P-Diffusers](./assets/wani2v.gif)
 
+Example of Wan2.1-I2V-14B-480P-Diffusers model running on 4 GPUs.
 ## Features
 
 - Generate high-quality videos from text prompts and images
@@ -41,8 +42,7 @@ git clone https://github.com/kevin314/ComfyUI-FastVideo
 Currently, the only dependency is `fastvideo`, which can be installed using pip.
 
 ```bash
-cd /path/to/ComfyUI/custom_nodes/ComfyUI-FastVideo
-pip install -r requirements.txt
+pip install fastvideo
 ```
 
 3. Install missing custom nodes:
@@ -54,9 +54,13 @@ cd /path/to/ComfyUI/custom_nodes
 git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git
 ```
 
-### Model Installation
+If you're seeing ImportError: libGL.so.1: cannot open shared object file: No such file or directory,
+you may need to install ffmpeg
 
-model_path takes either a model id from huggingface or a local path to a model.
+```bash
+apt-get update && apt-get install ffmpeg
+```
+
 
 ## Usage
 
@@ -68,6 +72,12 @@ After installation, the following nodes will be available in the ComfyUI interfa
 - **Text Encoder Config**
 - **DIT Config**
 - **Load Image Path**: Load images for potential conditioning
+
+You may have noticed many arguments on the nodes have 'auto' as the default value. This is because FastVideo will automatically detect the best values for these parameters based on the model and the hardware. However, you can also manually configure these parameters to get the best performance for your specific use case. We plan on releasing more optimized workflow files for different models and hardware configurations in the future.
+
+You can see what some of the default configurations are by looking at the FastVideo repo:
+- [Wan2.1-I2V-14B-480P-Diffusers](https://github.com/hao-ai-lab/FastVideo/blob/main/fastvideo/v1/configs/wan_14B_i2v_480p_pipeline.json)
+- [FastHunyuan-diffusers](https://github.com/hao-ai-lab/FastVideo/blob/main/fastvideo/v1/configs/fasthunyuan_t2v.json)
 
 ### Node Configuration
 
@@ -81,6 +91,9 @@ After installation, the following nodes will be available in the ComfyUI interfa
 - **sp_size**: Sequence parallelism size (usually should match num_gpus)
 - **tp_size**: Tensor parallelism size (usually should match num_gpus)
 - **precision**: Model precision (fp16 or bf16)
+
+
+`model_path takes either a model id from huggingface or a local path to a model. Models by default will be downloaded to ~/.cache/huggingface/hub/ and cached for subseqent runs.`
 
 #### Inference Args
 
@@ -101,12 +114,15 @@ FastVideo-FastHunyuan-diffusers
 
 ![FastVideo-FastHunyuan-diffusers](./assets/fasthunyuan.png)
 
+- [FastHunyuan-diffusers.json](./examples/FastHunyuan-diffusers.json)
+
 ### Image to Video
 
 Wan2.1-I2V-14B-480P-Diffusers
 
 ![Wan2.1-I2V-14B-480P-Diffusers](./assets/wani2v.png)
 
+- [Wan2.1-I2V-14B-480P-Diffusers.json](./examples/Wan2.1-I2V-14B-480P-Diffusers.json)
 
 
 ## License
