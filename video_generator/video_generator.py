@@ -9,11 +9,8 @@ import queue
 
 from fastvideo import VideoGenerator as FastVideoGenerator, PipelineConfig
 
-# Import the interrupt checking function from ComfyUI
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 from comfy.model_management import processing_interrupted
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 
 # Custom exception for interruption
