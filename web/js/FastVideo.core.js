@@ -126,6 +126,8 @@ function drawAutoAnnotated(ctx, node, widget_width, y, H) {
 }
 
 function mouseAutoAnnotated(event, [x, y], node) {
+    console.log(`mouseAutoAnnotated called for widget type ${this.config[0]}: ${event.type}, x=${x}, y=${y}, isAuto=${this.isAuto}`);  // Debug to see if handler is called
+
     const widget_width = node.size[0];
     const margin = 15;
     const H = 20; // Widget height
@@ -135,16 +137,47 @@ function mouseAutoAnnotated(event, [x, y], node) {
 
     const cogRadius = 6;
 
+    if (this.isAuto) {
+        console.log("AUTO MODE: Intercepting all mouse events");
+
+        if (event.type === "pointerup" || event.type === "mouseup") {
+            const cogX = widget_width - autoTextRightMargin - autoTextWidth - 6;
+            const cogLeftEdge = cogX - cogRadius;
+            const cogRightEdge = cogX + cogRadius;
+
+            if (x > cogLeftEdge && x < cogRightEdge) {
+                console.log("AUTO MODE: Cog clicked, switching to manual");
+                this.isAuto = false;
+                this.value = this.cachedValue !== undefined ? this.cachedValue : (this.options.default || 0);
+
+                if (this.callback) {
+                    this.callback(this.value);
+                }
+                node.graph.setDirtyCanvas(true, false);
+            }
+        }
+
+        // Block ALL events in auto mode except cog clicks
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        event.stopImmediatePropagation?.();
+        return true; // Always return true to indicate event was handled
+    }
+
     // Determine if clicking on increment/decrement buttons
-    // For string widgets, don't handle increment/decrement
     const delta = this.config[0] === "FVAUTOSTRING" ? 0 :
         (x < 40 ? -1 : x > widget_width - 48 ? 1 : 0);
-    const old_value = this.value;
 
-    // Handle different event types
-    if (event.type === "pointermove" && this.captureInput) {
+    if ((event.type === "pointermove" || event.type === "mousemove") && this.captureInput) {
         // Handle dragging
-        const delta_move = (x - this.last_x) * 0.1 * (this.options.step || 1);
+        const pixel_delta = x - this.last_x;
+
+        // Reduce sensitivity - use much smaller multiplier for dragging
+        const sensitivity = this.config[0] === "FVAUTOINT" ? 0.01 : 0.001;
+        const delta_move = pixel_delta * sensitivity * (this.options.step || 1);
+
+        console.log(`Dragging: pixel_delta=${pixel_delta}, sensitivity=${sensitivity}, step=${this.options.step || 1}, delta_move=${delta_move}, oldValue=${this.value}`);
+
         this.last_x = x;
 
         if (this.isAuto) return false;
@@ -171,6 +204,7 @@ function mouseAutoAnnotated(event, [x, y], node) {
             v = Math.round(v * precision) / precision;
         }
 
+        console.log(`Drag result: newValue=${v}`);
         this.value = v;
         if (this.callback) {
             this.callback(this.value);
@@ -178,18 +212,27 @@ function mouseAutoAnnotated(event, [x, y], node) {
 
         node.graph.setDirtyCanvas(true, false);
         return true;
-    } else if (event.type === "pointerdown") {
-        // Check if clicking on AUTO text - make region match the cog position and size
-        if (x > widget_width - autoTextRightMargin - autoTextWidth - 5 - cogRadius &&
-            x < widget_width - autoTextRightMargin - autoTextWidth - 5 + cogRadius) {
+    } else if (event.type === "pointerdown" || event.type === "mousedown") {
+        // ComfyUI appears to intercept pointerdown events, so this code path is never reached
+        console.log("pointerdown received (unexpected)");
+        return false;
+    } else if (event.type === "pointerup" || event.type === "mouseup") {
+        // Stop event propagation to prevent double handling
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        event.stopImmediatePropagation?.();
+
+        const cogX = widget_width - autoTextRightMargin - autoTextWidth - 6;
+        const cogLeftEdge = widget_width - autoTextRightMargin - autoTextWidth - 6 - cogRadius;
+        const cogRightEdge = widget_width - autoTextRightMargin - autoTextWidth - 6 + cogRadius;
+
+        if (x > cogLeftEdge && x < cogRightEdge) {
             this.isAuto = !this.isAuto;
 
             if (this.isAuto) {
-                // Store current value before switching to auto
                 this.cachedValue = this.value;
-                this.value = -99999;  // Use the same special value
+                this.value = -99999;
             } else {
-                // Restore manual value when switching from auto
                 this.value = this.cachedValue !== undefined ? this.cachedValue : (this.options.default || 0);
             }
 
@@ -198,34 +241,42 @@ function mouseAutoAnnotated(event, [x, y], node) {
             }
 
             node.graph.setDirtyCanvas(true, false);
+            this.captureInput = false;
             return true;
         }
 
-        if (this.isAuto) return false;
+        // If in auto mode and NOT clicking the cog, block all other interactions
+        if (this.isAuto) {
+            this.captureInput = false;
+            return true;
+        }
 
-        // Handle increment/decrement buttons
-        if (delta !== 0) {
+        // Handle increment/decrement buttons if not in auto mode
+        if (delta !== 0 && !this.isAuto) {
             if (this.config[0] === "FVAUTOCOMBO") {
-                // Get the combo options
                 const options = this.options.values || [];
                 if (options.length === 0) return true;
 
-                // Find the current value in the options
                 let currentIndex = -1;
                 for (let i = 0; i < options.length; i++) {
                     const optValue = typeof options[i] === 'object' ? options[i].value : options[i];
-                    if (optValue === this.value) {
+                    if (optValue == this.value || String(optValue) === String(this.value)) {
                         currentIndex = i;
                         break;
                     }
                 }
 
-                // Calculate the new index
-                let newIndex = currentIndex + delta;
-                if (newIndex < 0) newIndex = options.length - 1;
-                if (newIndex >= options.length) newIndex = 0;
+                if (currentIndex === -1) {
+                    currentIndex = 0;
+                }
 
-                // Set the new value
+                let newIndex = currentIndex + delta;
+                if (newIndex < 0) {
+                    newIndex = options.length - 1;
+                } else if (newIndex >= options.length) {
+                    newIndex = 0;
+                }
+
                 const newOption = options[newIndex];
                 this.value = typeof newOption === 'object' ? newOption.value : newOption;
 
@@ -234,11 +285,15 @@ function mouseAutoAnnotated(event, [x, y], node) {
                 }
 
                 node.graph.setDirtyCanvas(true, false);
+                this.captureInput = false;
                 return true;
             } else {
-                // Original behavior for numeric widgets
                 let v = parseFloat(this.value);
-                v += delta * 0.1 * (this.options.step || 1);
+                const increment = delta * 0.1 * (this.options.step || 1);
+
+                console.log(`Increment logic: widget type=${this.config[0]}, delta=${delta}, step=${this.options.step || 1}, increment=${increment}, oldValue=${v}`);
+
+                v += increment;
 
                 // Apply min/max constraints
                 if (this.options.min != null) {
@@ -257,29 +312,23 @@ function mouseAutoAnnotated(event, [x, y], node) {
                 }
 
                 this.value = v;
+
                 if (this.callback) {
                     this.callback(this.value);
                 }
 
                 node.graph.setDirtyCanvas(true, false);
+                this.captureInput = false;
                 return true;
             }
         }
 
-        // Start dragging
-        this.captureInput = true;
-        this.last_x = x;
-        return true;
-    } else if (event.type === "pointerup") {
-        // Handle click on value area
-        if (event.click_time < 200 && delta === 0 && !this.isAuto) {
+        if (delta === 0 && !this.isAuto) {
             if (this.config[0] === "FVAUTOCOMBO") {
-                // Get the combo options from widget options
                 const options = this.options.values || [];
 
                 // Create menu items
                 const menuItems = options.map(opt => {
-                    // Handle both string options and {value, label} objects
                     const value = typeof opt === 'object' ? opt.value : opt;
                     const label = typeof opt === 'object' ? opt.label : opt.toString();
 
@@ -297,7 +346,6 @@ function mouseAutoAnnotated(event, [x, y], node) {
                     };
                 });
 
-                // Show the context menu
                 new LiteGraph.ContextMenu(menuItems, {
                     event: event,
                     title: null,
@@ -306,31 +354,9 @@ function mouseAutoAnnotated(event, [x, y], node) {
                 });
 
                 return true;
-            } else {
-                // Original prompt for other types
+            } else if (this.config[0] === "FVAUTOSTRING") {
                 const d_callback = (v) => {
-                    if (this.config[0] === "FVAUTOSTRING") {
-                        // For string widgets, just use the value as is
-                        this.value = v;
-                    } else {
-                        this.value = this.parseValue?.(v) ?? Number(v);
-
-                        // Apply min/max constraints
-                        if (this.options.min != null) {
-                            this.value = Math.max(this.options.min, this.value);
-                        }
-                        if (this.options.max != null) {
-                            this.value = Math.min(this.options.max, this.value);
-                        }
-
-                        // Round to precision or to integer
-                        if (this.config[0] === "FVAUTOINT") {
-                            this.value = Math.round(this.value);
-                        } else if (this.options.precision !== undefined) {
-                            const precision = Math.pow(10, this.options.precision);
-                            this.value = Math.round(this.value * precision) / precision;
-                        }
-                    }
+                    this.value = v;
 
                     if (this.callback) {
                         this.callback(this.value);
@@ -345,8 +371,13 @@ function mouseAutoAnnotated(event, [x, y], node) {
                     d_callback,
                     event
                 );
+
+                return true;
+            } else {
+                this.captureInput = true;
+                this.last_x = x;
+                return true;
             }
-            return true;
         }
 
         this.captureInput = false;
@@ -363,15 +394,43 @@ function makeAutoAnnotated(widget, inputData) {
         value: widget.value
     };
 
+    const originalMouse = widget.mouse;
+    const originalOnMouse = widget.onMouse;
+
     // Add AUTO properties to the widget
     Object.assign(widget, {
         type: "BOOLEAN",
         draw: drawAutoAnnotated,
         mouse: mouseAutoAnnotated,
+        originalMouse: originalMouse, // Store for reference
+        originalOnMouse: originalOnMouse, // Store for reference
+        onMouse: null, // Explicitly disable original onMouse handler
+
         isAuto: true,
         cachedValue: widget.value,
         captureInput: false,
         last_x: 0,
+        config: inputData,
+        options: Object.assign({}, inputData[1], widget.options),
+        original: original,  // Store original properties for reference
+
+        // Disable other potential mouse handlers with no-op functions
+        onClick: function () {
+            return false;
+        },
+        onPointerUp: function () {
+            return false;
+        },
+        onPointerDown: function () {
+            return false;
+        },
+        onMouseUp: function () {
+            return false;
+        },
+        onMouseDown: function () {
+            return false;
+        },
+
         computeSize(width) {
             return [width, 20];
         },
@@ -413,19 +472,33 @@ function makeAutoAnnotated(widget, inputData) {
                 this.value = data;
                 this.cachedValue = data;
             }
-        },
-        config: inputData,
-        options: Object.assign({}, inputData[1], widget.options),
-        original: original  // Store original properties for reference
+        }
     });
 
     // Override callback to handle AUTO mode
     widget.callback = function (v) {
+        console.log(`Callback called with value: ${v}, isAuto: ${this.isAuto}`);
         if (this.isAuto) {
+            console.log("AUTO MODE: Blocking callback execution");
             return; // Don't call the original callback in AUTO mode
         }
-        return original.callback?.call(this, v);
+        console.log(`Calling original callback with value: ${v}`);
+        const result = original.callback?.call(this, v);
+        console.log(`Original callback finished, widget value is now: ${this.value}`);
+        return result;
     };
+
+    // Override any potential click handlers
+    const originalOnClick = widget.onClick;
+    if (originalOnClick) {
+        widget.onClick = function (...args) {
+            if (this.isAuto) {
+                console.log("AUTO MODE: Blocking onClick call");
+                return false;
+            }
+            return originalOnClick.call(this, ...args);
+        };
+    }
 
     return widget;
 }
@@ -434,6 +507,7 @@ app.registerExtension({
     name: "FastVideo.AutoWidgets",
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
+        console.log(`Processing node: ${nodeData?.name}`);
         if (nodeData?.name == "VideoGenerator" || nodeData?.name === "InferenceArgs" || nodeData?.name === "VAEConfig" ||
             nodeData?.name === "TextEncoderConfig" || nodeData?.name === "DITConfig") {
             // Add serialization support
@@ -504,20 +578,12 @@ app.registerExtension({
                 this.graph?.setDirtyCanvas(true, true);
             });
 
-            // Override onDrawForeground to ensure our widgets are drawn
-            chainCallback(nodeType.prototype, "onDrawForeground", function (ctx) {
-                // Check if we have any AUTO widgets
-                if (this.widgets) {
-                    const autoWidgets = this.widgets.filter(w => w.type === "BOOLEAN" && w.isAuto !== undefined);
-                    // Debug: Check if draw methods are properly set
-                    for (const w of autoWidgets) {
-                        console.log(`Widget ${w.name} draw method:`, w.draw === drawAutoAnnotated ? "Correctly set" : "NOT SET CORRECTLY");
-                    }
-                }
-            });
 
             // Override addInput to handle AUTO widgets
             chainCallback(nodeType.prototype, "onNodeCreated", function () {
+                console.log(`onNodeCreated for node type: ${this.constructor.comfyClass || 'unknown'}`);
+                console.log(`Node has ${this.widgets ? this.widgets.length : 0} widgets`);
+
                 // Convert any existing widgets to AUTO widgets if needed
                 let new_widgets = [];
                 const intWidgetNames = ["sp_size", "tp_size", "height", "width", "num_frames", "num_inference_steps", "flow_shift", "seed", "fps", "scale_factor",
@@ -531,22 +597,31 @@ app.registerExtension({
                 const stringWidgetNames = ["prefix", "quant_config", "lora_config", "image_path"]
 
                 if (this.widgets) {
+                    console.log(`Widget names: ${this.widgets.map(w => w.name).join(', ')}`);
+
                     for (let w of this.widgets) {
+                        console.log(`Processing widget: ${w.name}, type: ${w.type}`);
                         if (intWidgetNames.includes(w.name)) {
+                            console.log(`Converting ${w.name} to auto int widget`);
                             new_widgets.push(makeAutoAnnotated(w, ["FVAUTOINT", { "default": 0 }]));
                         } else if (floatWidgetNames.includes(w.name)) {
+                            console.log(`Converting ${w.name} to auto float widget`);
                             new_widgets.push(makeAutoAnnotated(w, ["FVAUTOFLOAT", { "default": 0 }]));
                         } else if (comboWidgetNames.includes(w.name)) {
+                            console.log(`Converting ${w.name} to auto combo widget`);
                             new_widgets.push(makeAutoAnnotated(w, ["FVAUTOCOMBO", { "default": 0 }]));
                         } else if (stringWidgetNames.includes(w.name)) {
+                            console.log(`Converting ${w.name} to auto string widget`);
                             new_widgets.push(makeAutoAnnotated(w, ["FVAUTOSTRING", { "default": "" }]));
                         } else {
+                            console.log(`Keeping ${w.name} as regular widget`);
                             new_widgets.push(w);
                         }
                     }
                     this.widgets = new_widgets;
 
                     const autoWidgets = this.widgets.filter(w => w.type === "BOOLEAN" && w.isAuto !== undefined);
+                    console.log(`Created ${autoWidgets.length} auto widgets for ${this.constructor.comfyClass || 'unknown'}`);
                 }
 
                 this.graph?.setDirtyCanvas(true, true);
